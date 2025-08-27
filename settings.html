@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Settings - Bocchi Bot Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        select {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 0.5rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+            padding-right: 2.5rem;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        /* Custom Bocchi Button Styles */
+        .btn-bocchi {
+            background-color: #F55593; /* Kessoku Band Pink */
+            color: white;
+            font-weight: bold;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            transition: all 0.2s ease-in-out;
+            text-decoration: none;
+            display: inline-block;
+            cursor: pointer;
+        }
+        .btn-bocchi:hover {
+            background-color: #e04481;
+            animation: bocchi-glitch 0.3s infinite;
+        }
+        .btn-bocchi:disabled {
+            background-color: #a05c78;
+            cursor: not-allowed;
+            animation: none;
+        }
+        /* Glitch/Anxiety Animation */
+        @keyframes bocchi-glitch {
+            0% { transform: translate(0); } 20% { transform: translate(-2px, 2px); } 40% { transform: translate(-2px, -2px); }
+            60% { transform: translate(2px, 2px); } 80% { transform: translate(2px, -2px); } 100% { transform: translate(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+
+    <div class="container mx-auto px-6 py-12">
+        <header class="mb-12">
+            <a href="dashboard.html" class="text-indigo-400 hover:text-indigo-300">&larr; Back to Servers</a>
+            <div id="server-header" class="flex items-center gap-4 mt-4">
+                <!-- Server icon and name will be loaded here -->
+                <h1 class="text-4xl font-bold">Loading...</h1>
+            </div>
+        </header>
+
+        <main id="settings-form" class="bg-gray-800 p-8 rounded-lg max-w-3xl mx-auto">
+            <!-- Settings will be loaded here -->
+            <p class="text-gray-400">Loading settings...</p>
+        </main>
+    </div>
+
+    <script>
+        const serverHeader = document.getElementById('server-header');
+        const settingsForm = document.getElementById('settings-form');
+        const BACKEND_URL = 'http://localhost:3000';
+
+        // Get the Guild ID from the URL (e.g., settings.html?guild=12345)
+        const guildId = new URLSearchParams(window.location.search).get('guild');
+
+        async function loadSettings() {
+            if (!guildId) {
+                settingsForm.innerHTML = '<p class="text-red-400">No server ID provided. Please go back and select a server.</p>';
+                return;
+            }
+
+            try {
+                // Fetch both the server's channels and the bot's settings for that server at the same time
+                const [channelsRes, settingsRes] = await Promise.all([
+                    fetch(`${BACKEND_URL}/api/guilds/${guildId}/channels`, { credentials: 'include' }),
+                    fetch(`${BACKEND_URL}/api/settings/${guildId}`, { credentials: 'include' })
+                ]);
+
+                if (!channelsRes.ok || !settingsRes.ok) {
+                    throw new Error('Failed to fetch server data. You might not have permission to manage this server.');
+                }
+
+                const { channels, serverInfo } = await channelsRes.json();
+                const settings = await settingsRes.json();
+
+                // Update the header
+                const serverIcon = serverInfo.icon
+                    ? `https://cdn.discordapp.com/icons/${serverInfo.id}/${serverInfo.icon}.png`
+                    : 'https://via.placeholder.com/64/4A5568/FFFFFF?text=' + serverInfo.name.charAt(0);
+                serverHeader.innerHTML = `
+                    <img src="${serverIcon}" alt="Server Icon" class="w-16 h-16 rounded-full">
+                    <h1 class="text-4xl font-bold">${serverInfo.name}</h1>
+                `;
+
+                // Filter for text channels and categories
+                const textChannels = channels.filter(c => c.type === 0); // 0 = GuildText
+                const categories = channels.filter(c => c.type === 4); // 4 = GuildCategory
+
+                // Build the HTML for the form
+                settingsForm.innerHTML = `
+                    <div class="space-y-6">
+                        <div>
+                            <label for="log-channel" class="block text-lg font-medium text-gray-300">Log Channel</label>
+                            <p class="text-sm text-gray-500 mb-2">Select a channel where the bot will post moderation and activity logs.</p>
+                            <select id="log-channel" class="w-full bg-gray-700 border border-gray-600 rounded-md p-2 appearance-none">
+                                <option value="none">None</option>
+                                ${textChannels.map(c => `<option value="${c.id}" ${settings.logChannelId === c.id ? 'selected' : ''}>#${c.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label for="ticket-category" class="block text-lg font-medium text-gray-300">Ticket Category</label>
+                            <p class="text-sm text-gray-500 mb-2">Select a category where new support tickets will be created.</p>
+                            <select id="ticket-category" class="w-full bg-gray-700 border border-gray-600 rounded-md p-2 appearance-none">
+                                <option value="none">None</option>
+                                ${categories.map(c => `<option value="${c.id}" ${settings.ticketCategoryId === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mt-8 text-right">
+                        <button id="save-button" class="btn-bocchi">Save Changes</button>
+                    </div>
+                `;
+
+                // Add event listener to the new save button
+                document.getElementById('save-button').addEventListener('click', saveSettings);
+
+            } catch (error) {
+                console.error('Failed to load settings:', error);
+                settingsForm.innerHTML = `<p class="text-red-400">${error.message}</p>`;
+            }
+        }
+
+        async function saveSettings() {
+            const saveButton = document.getElementById('save-button');
+            saveButton.disabled = true;
+            saveButton.textContent = 'Saving...';
+
+            const newSettings = {
+                logChannelId: document.getElementById('log-channel').value,
+                ticketCategoryId: document.getElementById('ticket-category').value,
+            };
+
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/settings/${guildId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(newSettings),
+                });
+
+                if (!res.ok) {
+                    throw new Error('Failed to save settings.');
+                }
+                
+                saveButton.textContent = 'Saved!';
+                setTimeout(() => {
+                    saveButton.disabled = false;
+                    saveButton.textContent = 'Save Changes';
+                }, 2000);
+
+            } catch (error) {
+                console.error('Save error:', error);
+                saveButton.textContent = 'Error!';
+                 setTimeout(() => {
+                    saveButton.disabled = false;
+                    saveButton.textContent = 'Save Changes';
+                }, 2000);
+            }
+        }
+
+        window.onload = loadSettings;
+    </script>
+</body>
+</html>
